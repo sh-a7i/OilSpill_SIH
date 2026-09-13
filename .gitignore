@@ -6,7 +6,12 @@ AIS/data/processed/
 __pycache__/
 *.pyc
 venv/
+env/
 .venv/
 .vscode/
+.idea/
 .DS_Store
 Thumbs.db
+.env
+.env.local
+outputs/geospatial/*.png

@@ -99,9 +99,25 @@ def _transform(training: bool) -> A.Compose:
     return A.Compose(operations)
 
 
-def build_model(device: torch.device | None = None) -> tuple[nn.Module, torch.device]:
+def _load_model_weights(model: nn.Module, weights_path: Path | str, device: torch.device) -> nn.Module:
+    checkpoint = torch.load(weights_path, map_location=device)
+    if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
+        state_dict = checkpoint["state_dict"]
+    elif isinstance(checkpoint, nn.Module):
+        state_dict = checkpoint.state_dict()
+    elif isinstance(checkpoint, dict):
+        state_dict = checkpoint
+    else:
+        raise TypeError(f"Unsupported checkpoint format loaded from {weights_path}")
+    model.load_state_dict(state_dict)
+    return model
+
+
+def build_model(device: torch.device | None = None, weights_path: Path | str | None = None) -> tuple[nn.Module, torch.device]:
     device = device or select_device()
     model = smp.Unet(encoder_name="resnet18", encoder_weights=None, in_channels=1, classes=1).to(device)
+    if weights_path is not None:
+        _load_model_weights(model, weights_path, device)
     return model, device
 
 
@@ -178,8 +194,7 @@ def train_model(config: DetectionConfig, epochs: int = 5, batch_size: int = 16, 
 def evaluate_model(config: DetectionConfig, split: str = "val", limit: int | None = None) -> dict[str, float]:
     image_paths, mask_paths = _split_paths(config, split)
     pairs = list(zip(image_paths, mask_paths))[:limit]
-    model, device = build_model()
-    model.load_state_dict(torch.load(config.resolved_weights_path(), map_location=device, weights_only=True))
+    model, device = build_model(weights_path=config.resolved_weights_path())
     model.eval()
     dices: list[float] = []
     ious: list[float] = []
@@ -236,8 +251,7 @@ def detect_image(image_path: Path, model: nn.Module, device: torch.device, confi
 def infer_directory(config: DetectionConfig, image_dir: Path, limit: int | None = None) -> list[dict[str, Any]]:
     output_dir = config.resolved_output_dir()
     output_dir.mkdir(parents=True, exist_ok=True)
-    model, device = build_model()
-    model.load_state_dict(torch.load(config.resolved_weights_path(), map_location=device, weights_only=True))
+    model, device = build_model(weights_path=config.resolved_weights_path())
     model.eval()
     images = sorted(path for path in image_dir.iterdir() if path.suffix.lower() in IMAGE_EXTENSIONS)[:limit]
     records = []

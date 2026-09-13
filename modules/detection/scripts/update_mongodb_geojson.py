@@ -5,9 +5,9 @@ from pathlib import Path
 import certifi
 from dotenv import load_dotenv
 from pymongo import GEOSPHERE, MongoClient, UpdateOne
-from pymongo.errors import BulkWriteError, PyMongoError
+from pymongo.errors import BulkWriteError, OperationFailure, PyMongoError
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 load_dotenv(PROJECT_ROOT / ".env")
 
 MONGO_URI = os.environ["MONGO_URI"]
@@ -64,6 +64,7 @@ def update_geometries():
     print(f"Found {total_docs} records in MongoDB collection '{COLLECTION_NAME}'.")
 
     bulk_operations = []
+    operation_image_ids = []
     updated_count = 0
     missing_files = 0
 
@@ -91,6 +92,7 @@ def update_geometries():
                         {"$set": {"geometry": clean_geom}}
                     )
                 )
+                operation_image_ids.append(img_id)
                 updated_count += 1
 
         except Exception as e:
@@ -110,7 +112,7 @@ def update_geometries():
                 f"{len(write_errors)} invalid geometries."
             )
             for write_error in write_errors[:5]:
-                image_id = bulk_operations[write_error["index"]].filter.get("image_id")
+                image_id = operation_image_ids[write_error["index"]]
                 print(
                     f"[WARN] Invalid geometry skipped for {image_id} "
                     f"(MongoDB error {write_error.get('code', 'unknown')})."
@@ -122,8 +124,14 @@ def update_geometries():
 
     # Re-apply 2dsphere index (sparse=True ignores any clean control scenes without polygons)
     print("Ensuring 2dsphere spatial index on 'geometry'...")
-    collection.create_index([("geometry", GEOSPHERE)], sparse=True)
-    print("[SUCCESS] Spatial index updated.")
+    try:
+        collection.create_index([("geometry", GEOSPHERE)], sparse=True)
+        print("[SUCCESS] Spatial index updated.")
+    except OperationFailure as error:
+        if error.code == 86:
+            print("[WARN] Spatial index already exists; continuing.")
+        else:
+            raise
 
 if __name__ == "__main__":
     update_geometries()

@@ -9,7 +9,7 @@ from pymongo import GEOSPHERE, MongoClient  # type: ignore
 from pymongo.errors import ConnectionFailure, PyMongoError
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 load_dotenv(PROJECT_ROOT / ".env")
 
 MONGO_URI = os.environ["MONGO_URI"]
